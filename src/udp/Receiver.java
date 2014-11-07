@@ -59,7 +59,7 @@ public class Receiver {
                     ACK++;
                 }
                 sendACK(sk3Port);
-                flag = processPacket(inData);
+                flag = processPacket(inData); //flag will be false for the last packet
             }
         }
         outFile.close();
@@ -108,10 +108,17 @@ public class Receiver {
         return seq == ACK;
     }
     private void sendACK(int sk3port) throws UnknownHostException, IOException{
-        byte[] out = new byte[1];
+        CRC32 crc = new CRC32();
+        byte[] out = new byte[5];
         InetAddress outAdd = InetAddress.getByName("127.0.0.1");
-        out[0] = ACK;
-        DatagramPacket outPacket = new DatagramPacket(out,1,outAdd,sk3port);
+        out[4] = ACK;
+        crc.update(out, 4, 1);
+        int check = (int)crc.getValue();
+        for(int i=3; i>=0; i--){
+            out[i] = (byte)(check%256);
+            check = check/256;
+        }
+        DatagramPacket outPacket = new DatagramPacket(out,out.length,outAdd,sk3port);
         sk3.send(outPacket);
     }
     public static void main(String[] args) throws IOException{

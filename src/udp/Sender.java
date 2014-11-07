@@ -1,134 +1,126 @@
-    
-import java.net.*;
-import java.util.*;
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
 
+package udp;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.SocketException;
+import java.nio.ByteBuffer;
+import java.util.zip.CRC32;
+
+/**
+ *
+ * @author Peter
+ */
 public class Sender {
-    static int pkt_size = 10;
-    static int send_interval = 500;
-
-    public class OutThread extends Thread {
+    int ACK = -1;
+    byte lastSent = -1;
+    String inputPath;
+    String outputFile;
+    
+    class OutThread extends Thread{
         private DatagramSocket sk_out;
-        private int dst_port;
-        private int recv_port;
-        public OutThread(DatagramSocket sk_out, int dst_port, int recv_port) {
+        private int dstPort;
+        FileInputStream fis;
+        public OutThread(DatagramSocket sk_out, int dstPort) throws FileNotFoundException{
             this.sk_out = sk_out;
-            this.dst_port = dst_port;
-            this.recv_port = recv_port;
+            this.dstPort = dstPort;
+            fis = new FileInputStream(new File(inputPath));
+            
         }
-        public void run() {
-            try {
-                int count = 0;
-                byte[] out_data = new byte[pkt_size];
-                InetAddress dst_addr = InetAddress.getByName("127.0.0.1");
-
-                // To register the recv_port at the UnreliNet first
-                //	DatagramPacket out_pkt = new DatagramPacket(
-                //			("REG:" + recv_port).getBytes(),
-                //			("REG:" + recv_port).getBytes().length, dst_addr,
-                //			dst_port);
-                //	sk_out.send(out_pkt);
-                try {
-                    while (true) {
-                        // construct the packet
-                        for (int i = 0; i < pkt_size; ++i) {
-                            out_data[i] = (byte) (count % 10);
-                        }
-
-                        // send the packet
-                        DatagramPacket out_pkt = new DatagramPacket(out_data, out_data.length,
-                                dst_addr, dst_port);
-                        sk_out.send(out_pkt);
-
-                        // print info
-                        System.out.print((new Date().getTime())
-                                + ": sender sent " + out_pkt.getLength()
-                                + "bytes to " + out_pkt.getAddress().toString()
-                                + ":" + out_pkt.getPort() + ". data are ");
-                        for (int i = 0; i < pkt_size; ++i) {
-                            System.out.print(out_data[i]);
-                        }
-                        System.out.println();
-
-                        // wait for a while
-                        sleep(send_interval);
-
-                        // increase counter
-                        count++;
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                } finally {
-                    sk_out.close();
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-                System.exit(-1);
+        public void run(){
+            byte[] outData = new byte[1000];
+            try{
+                InetAddress dstAdd = InetAddress.getByName("127.0.0.1");             
+                while(lastSent<ACK+10){
+                    //POPULATE BUFFER
+                    addSequence(outData);
+                    addCRC(outData);     
+                    DatagramPacket outPacket = new DatagramPacket(outData, outData.length, dstAdd, dstPort);
+                    //InThread th_in = new InThread(); 
+                }       
+            }
+            catch(Exception e){
+                
             }
         }
+        private void addSequence(byte[] outData){
+            if(lastSent==Byte.MAX_VALUE){
+                lastSent = -1;
+            }
+            lastSent++;
+            outData[4]=lastSent;
+        }
+        private void addCRC(byte[] outData){
+            CRC32 crc = new CRC32();
+            crc.update(outData, 4, outData.length-4);
+            int checksum = (int) crc.getValue();
+            for(int i=3;i>=0;i--){
+                outData[i] = (byte)(checksum%256);
+                checksum = checksum>>8;
+            }
+        }
+        
     }
-    public class InThread extends Thread {
+    class InThread extends Thread{
         private DatagramSocket sk_in;
-        public InThread(DatagramSocket sk_in) {
-            this.sk_in = sk_in;
+        
+        public InThread(DatagramSocket sk4){
+            this.sk_in = sk4;
         }
-        public void run() {
-            try {
-                byte[] in_data = new byte[pkt_size];
-                DatagramPacket in_pkt = new DatagramPacket(in_data,
-                        in_data.length);
-                try {
-                    while (true) {
-                        sk_in.receive(in_pkt);
-                        System.out.print((new Date().getTime())
-                                + ": sender received " + in_pkt.getLength()
-                                + "bytes from "
-                                + in_pkt.getAddress().toString() + ":"
-                                + in_pkt.getPort() + ". data are ");
-                        for (int i = 0; i < pkt_size; ++i) {
-                            System.out.print(in_data[i]);
-                        }
-                        System.out.println();
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                } finally {
-                    sk_in.close();
+        public void run(){
+            byte[] inBytes = new byte[1000];
+            DatagramPacket inPacket = new DatagramPacket(inBytes,inBytes.length);
+            boolean flag = true;
+            try{
+                while(flag){
+                    sk_in.receive(inPacket);
+                    processACK(inPacket.getData());
+                }                
+            }
+            catch(IOException ioe){
+                
+            }
+        }
+        private void processACK(byte[] inBytes){
+            ByteBuffer bb = ByteBuffer.wrap(inBytes);
+            int check = bb.getInt();
+            CRC32 crc = new CRC32();
+            crc.update(inBytes, 4, 1);
+            if(check==crc.getValue()){
+                byte ack = inBytes[4];
+                if(ACK<ack){
+                    ACK = ack;
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
-                System.exit(-1);
             }
         }
     }
-
-    public Sender(int sk1_dst_port, int sk4_dst_port) {
+    public Sender(int sk1Port, int sk4Port, String inputPath, String outputFile) throws SocketException{
+        this.inputPath = inputPath;
+        this.outputFile = outputFile;
         DatagramSocket sk1, sk4;
-        System.out.println("sk1_dst_port=" + sk1_dst_port + ", "
-                + "sk4_dst_port=" + sk4_dst_port + ".");
+        sk1 = new DatagramSocket();
+        sk4 = new DatagramSocket(sk4Port);
 
-        try {
-            // create sockets
-            sk1 = new DatagramSocket();
-            sk4 = new DatagramSocket(sk4_dst_port);
-
-            // create threads to process data
-            InThread th_in = new InThread(sk4);
-            OutThread th_out = new OutThread(sk1, sk1_dst_port, sk4_dst_port);
-            th_in.start();
-            th_out.start();
-        } catch (SocketException e) {
-            e.printStackTrace();
-            System.exit(-1);
-        }
+        OutThread th_out = new OutThread(sk1, sk1Port);
+        
+        th_out.start();
     }
-
-    public static void main(String[] args) {
-        // parse parameters
-        if (args.length != 2) {
-            System.err.println("Usage: java TestSender sk1_dst_port, sk4_dst_port");
-            System.exit(-1);
-        } else {
-            new Sender(Integer.parseInt(args[0]), Integer.parseInt(args[1]));
+    public static void main(String[] args) throws SocketException{
+        if(args.length!=4){
+            System.err.println("WRONG ARGUMENT!");
+        }
+        else{
+            new Sender(Integer.parseInt(args[0]),Integer.parseInt(args[1]),args[2],args[3]);
         }
     }
 }
