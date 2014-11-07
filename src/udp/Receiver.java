@@ -44,12 +44,12 @@ public class Receiver {
         boolean flag = true;
         while(flag){
             sk2.receive(inPacket);
-            if(!checksum(inData)){
+            if(!checksum(inPacket.getData())){
                 //drop packet
             }
-            else if(!checkOrder(inData)){
+            else if(!checkOrder(inPacket.getData())){
                 sendACK(sk3Port);
-            }
+            }   
             else{
                 //Advance ACK
                 if(ACK==Byte.MAX_VALUE){
@@ -74,23 +74,21 @@ public class Receiver {
     
     //return false if it is the last packet
     private boolean processPacket(byte[] inBytes) throws IOException{
-        ByteBuffer bb = ByteBuffer.wrap(inBytes);
-        int temp = (int) bb.getShort(5);
-        int len = temp/4;
+        byte EOF = inBytes[5];
         boolean last = true;
-        if(temp%2==1){
-            String filename = new String(Arrays.copyOfRange(inBytes, 7, len+6));
+        if(EOF==1){
+            String filename = new String(Arrays.copyOfRange(inBytes, 6, inBytes.length-6));
             initStream(filename);
         }
         else{
             if(outFile!=null){
-                outFile.write(inBytes, 7, len);
+                outFile.write(inBytes, 6, inBytes.length-6);
             }
             else{
                 //ERROR!
             }
         }
-        if((temp/2)%2==1){
+        if(EOF==2){
             last = false;
         }
         return last;
@@ -113,10 +111,12 @@ public class Receiver {
         InetAddress outAdd = InetAddress.getByName("127.0.0.1");
         out[4] = ACK;
         crc.update(out, 4, 1);
+        ByteBuffer bb = ByteBuffer.allocate(4);
         int check = (int)crc.getValue();
-        for(int i=3; i>=0; i--){
-            out[i] = (byte)(check%256);
-            check = check/256;
+        bb.putInt(check);
+        bb.flip();
+        for(int i=0; i<4; i++){
+            out[i] = bb.get();
         }
         DatagramPacket outPacket = new DatagramPacket(out,out.length,outAdd,sk3port);
         sk3.send(outPacket);
