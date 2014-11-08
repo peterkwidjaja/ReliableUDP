@@ -4,11 +4,8 @@
  * and open the template in the editor.
  */
 
-package udp;
-
 import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -35,20 +32,18 @@ public class Receiver {
         sk3 = new DatagramSocket();         //sk3 is to send to UnreliNet from Receiver
         this.path = path;
         byte[] inData = new byte[1000]; //Define max packet size to 1000
-        File tempFile = new File(path, "temp");
-        if(!tempFile.exists())
-            tempFile.createNewFile();
-        BufferedOutputStream tempStream = new BufferedOutputStream(new FileOutputStream(tempFile));
         
         DatagramPacket inPacket = new DatagramPacket(inData, inData.length);
         boolean flag = true;
         while(flag){
             sk2.receive(inPacket);
-            if(!checksum(inPacket.getData())){
-                //drop packet
+            System.out.println("Receive packet!");
+            if(!checksum(inPacket.getData(),inPacket.getLength())){
+                System.out.println("CRC error");
             }
             else if(!checkOrder(inPacket.getData())){
                 sendACK(sk3Port);
+                System.out.println("Sending wrong order ACK"+ACK);
             }   
             else{
                 //Advance ACK
@@ -59,7 +54,10 @@ public class Receiver {
                     ACK++;
                 }
                 sendACK(sk3Port);
-                flag = processPacket(inData); //flag will be false for the last packet
+                System.out.println("Sending ACK "+ ACK);
+                
+                
+                flag = processPacket(inPacket.getData(),inPacket.getLength()); //flag will be false for the last packet
             }
         }
         outFile.close();
@@ -73,37 +71,44 @@ public class Receiver {
     }
     
     //return false if it is the last packet
-    private boolean processPacket(byte[] inBytes) throws IOException{
+    private boolean processPacket(byte[] inBytes, int length) throws IOException{
         byte EOF = inBytes[5];
         boolean last = true;
         if(EOF==1){
-            String filename = new String(Arrays.copyOfRange(inBytes, 6, inBytes.length-6));
+            byte[] fileBytes = new byte[length-6];
+            System.arraycopy(inBytes, 6, fileBytes, 0, length-6);
+            String filename = new String(fileBytes);
+            System.out.println("new file: "+filename+ " "+fileBytes);
             initStream(filename);
         }
         else{
             if(outFile!=null){
-                outFile.write(inBytes, 6, inBytes.length-6);
+                outFile.write(inBytes, 6, length-6);
             }
             else{
-                //ERROR!
+                System.err.println("filename has not been initialized");
             }
         }
+        
         if(EOF==2){
             last = false;
         }
         return last;
     }
-    private boolean checksum(byte[] inBytes){
+    private boolean checksum(byte[] inBytes, int length){
         CRC32 crc = new CRC32();
         ByteBuffer bb = ByteBuffer.wrap(inBytes);
         int check = bb.getInt();
-        crc.update(inBytes, 4, inBytes.length-4);
-        long temp = crc.getValue();
+        bb.clear();
+        System.out.println("CRC for "+length+" from server: "+check);
+        crc.update(inBytes, 4, length-4);     
+        int temp = (int)crc.getValue();
         return check == temp;
     }
     private boolean checkOrder(byte[] inBytes){
         byte seq = inBytes[4];
-        return seq == ACK;
+        System.out.println("Receive sequence: "+seq);
+        return seq == (ACK+1)%128;
     }
     private void sendACK(int sk3port) throws UnknownHostException, IOException{
         CRC32 crc = new CRC32();
