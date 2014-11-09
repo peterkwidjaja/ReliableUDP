@@ -31,6 +31,7 @@ public class Sender {
     boolean lastReceived = false;
     boolean lastPacket = false;
     int lastACK = -1;
+    boolean start = true;
     class OutThread extends Thread{
         private final int headerSize = 6; //define size of header in the packet
         private DatagramSocket sk_out;
@@ -47,8 +48,7 @@ public class Sender {
             prepare();
         }
         private void prepare() throws IOException{
-            byte[] fileBuff = new byte[994];
-            
+            byte[] fileBuff = new byte[994];     
             InetAddress dstAdd = InetAddress.getByName("127.0.0.1"); 
             
             //Prepare first packet which contains filename
@@ -100,16 +100,25 @@ public class Sender {
                     while(resend){
                         resend = false;
                         for(int i=packResend; i<=lastSent; i++){
-                            if(resend) break;
+                            if(resend)
+                                break;
+                            if(i<=ACK){
+                                lastSent = ACK;
+                                break;
+                            }
                             sk_out.send(packets[i]);
+                            start = true;
                             System.out.println("sending.." + i);
                         }
                     }
-                    while(lastSent<ACK+9 && lastSent<packets.length-1){
+                    while(lastSent<ACK+10 && lastSent<packets.length-1){
                         if(resend) break; //if something needs to be resent break, attend to the resend first!
+                        
                         lastSent++;
                         lastSeq = lastSent%128;
                         sk_out.send(packets[lastSent]);
+                        if(lastSent == ACK+1)
+                            start = true;
                         System.out.println("sending.." + lastSent);
                         if(lastSent==packets.length-1){ //Indicate that the last packet is already sent
                             lastACK = lastSeq;
@@ -129,8 +138,9 @@ public class Sender {
     }
     class InThread extends Thread{
         private DatagramSocket sk_in;
-        //private int countRep = 0;
-        //private byte repAck = 0;
+        private int countRep = 0;
+        private byte repAck = 0;
+        private int countLimit = 3;
         public InThread(DatagramSocket sk4){
             this.sk_in = sk4;
         }
@@ -141,8 +151,9 @@ public class Sender {
             try{
                 while(flag){
                     if(lastSent!=ACK){
+                        while(!start) {}
                         System.out.println("Waiting for ACK..");
-                        sk_in.setSoTimeout(100);
+                        sk_in.setSoTimeout(300);
                         try{
                             sk_in.receive(inPacket);
                             System.out.println("ACK received!");
@@ -152,6 +163,7 @@ public class Sender {
                             System.out.println("Timeout");
                             packResend = ACK+1;
                             resend = true;
+                            start = false;
                         }
                     }
                     if(lastReceived){   //last ACK received, close thread
@@ -171,6 +183,23 @@ public class Sender {
             if(check==(int)crc.getValue()){
                 byte ack = inBytes[4];
                 System.out.println("Receive ACK: "+ack);
+                
+                if(ack==ACK%128){
+                    if(repAck==ack){    
+                        countRep++;
+                        if(countRep==countLimit){
+                            countRep = 0;
+                            countLimit = 10;
+                            throw new SocketTimeoutException();
+                        }
+                    }    
+                    else{
+                        repAck = ack;
+                        countRep = 2;
+                        countLimit = 3;
+                    }
+                }
+                
                 if((ACK%128)<ack && (lastSeq>=ack)){
                     ACK += ack-(ACK%128);
                 }
@@ -186,6 +215,9 @@ public class Sender {
                     lastReceived = true;
                 }
                 System.out.println("Set ACK to: " + ACK);
+            }
+            else{
+                System.out.println("ACK corrupted");
             }
         }
     }

@@ -39,12 +39,16 @@ public class Receiver {
         while(flag){
             sk2.receive(inPacket);
             System.out.println("Receive packet!");
+            int chk;
             if(!checksum(inPacket.getData(),inPacket.getLength())){
                 System.out.println("CRC error");
+                sendACK(sk3Port);
             }
-            else if(!checkOrder(inPacket.getData())){
-                //sendACK(sk3Port);
-                System.out.println("Sending wrong order ACK"+ACK);
+            else if((chk = checkOrder(inPacket.getData()))!=0){
+                if(chk>0){
+                    sendACK(sk3Port);
+                }
+                System.out.println("wrong order ACK");
             }   
             else{
                 //Advance ACK
@@ -62,7 +66,7 @@ public class Receiver {
         outFile.close();
         boolean end = true;
         while(end){
-            sk2.setSoTimeout(500);
+            sk2.setSoTimeout(300);
             try{
                 sk2.receive(inPacket);
                 sendACK(sk3Port);
@@ -116,10 +120,15 @@ public class Receiver {
         int temp = (int)crc.getValue();
         return check == temp;
     }
-    private boolean checkOrder(byte[] inBytes){
+    private int checkOrder(byte[] inBytes){
         byte seq = inBytes[4];
         System.out.println("Receive sequence: "+seq);
-        return seq == (ACK+1)%128;
+        if(seq==(ACK+1)%128)
+            return 0;
+        else if(seq<(ACK+1)%128)
+            return -1;
+        else
+            return 1;
     }
     private void sendACK(int sk3port) throws UnknownHostException, IOException{
         CRC32 crc = new CRC32();
