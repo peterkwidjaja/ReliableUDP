@@ -21,7 +21,7 @@ import java.util.zip.CRC32;
  * @author Peter
  */
 public class Sender {
-    int ACK = 0;
+    int ACK = -1;
     int lastSent = -1;
     int lastSeq = -1;
     String inputPath;
@@ -111,6 +111,7 @@ public class Sender {
                         lastSent++;
                         lastSeq = lastSent%128;
                         sk_out.send(packets[lastSent]);
+                        System.out.println("sending.." + lastSent);
                         if(lastSent==packets.length-1){ //Indicate that the last packet is already sent
                             lastACK = lastSeq;
                             lastPacket = true;
@@ -129,8 +130,8 @@ public class Sender {
     }
     class InThread extends Thread{
         private DatagramSocket sk_in;
-        private int countRep = 0;
-        private byte repAck = 0;
+        //private int countRep = 0;
+        //private byte repAck = 0;
         public InThread(DatagramSocket sk4){
             this.sk_in = sk4;
         }
@@ -142,9 +143,10 @@ public class Sender {
                 while(flag){
                     if(lastSent!=ACK){
                         System.out.println("Waiting for ACK..");
-                        sk_in.setSoTimeout(500);
+                        sk_in.setSoTimeout(200);
                         try{
                             sk_in.receive(inPacket);
+                            System.out.println("ACK received!");
                             processACK(inPacket.getData());          
                         }
                         catch(SocketTimeoutException e){
@@ -170,16 +172,6 @@ public class Sender {
             if(check==(int)crc.getValue()){
                 byte ack = inBytes[4];
                 System.out.println("Receive ACK: "+ack);
-                if(ack==repAck){
-                    countRep++;
-                    if(countRep>=3){
-                        throw new SocketTimeoutException(); //if 3 ack received, triggers timeout.
-                    }
-                }
-                else{
-                    repAck = ack;
-                    countRep = 1;
-                }
                 if((ACK%128)<ack && (lastSeq>=ack)){
                     ACK += ack-(ACK%128);
                 }

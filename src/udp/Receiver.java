@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.util.zip.CRC32;
 import java.nio.ByteBuffer;
@@ -42,7 +43,7 @@ public class Receiver {
                 System.out.println("CRC error");
             }
             else if(!checkOrder(inPacket.getData())){
-                sendACK(sk3Port);
+                //sendACK(sk3Port);
                 System.out.println("Sending wrong order ACK"+ACK);
             }   
             else{
@@ -55,12 +56,22 @@ public class Receiver {
                 }
                 sendACK(sk3Port);
                 System.out.println("Sending ACK "+ ACK);
-                
-                
                 flag = processPacket(inPacket.getData(),inPacket.getLength()); //flag will be false for the last packet
             }
         }
         outFile.close();
+        boolean end = true;
+        while(end){
+            sk2.setSoTimeout(500);
+            try{
+                sk2.receive(inPacket);
+                sendACK(sk3Port);
+            }
+            catch(SocketTimeoutException e){
+                end = false;
+            }
+        }
+        sk2.close();
     }
     private void initStream(String filename) throws IOException{
         File newFile = new File(path,filename);
