@@ -38,17 +38,17 @@ public class Receiver {
         boolean flag = true;
         while(flag){
             sk2.receive(inPacket);
-            System.out.println("Receive packet!");
+            //System.out.println("Receive packet!");
             int chk;
             if(!checksum(inPacket.getData(),inPacket.getLength())){
-                System.out.println("CRC error");
+                //System.out.println("CRC error");
                 sendACK(sk3Port);
             }
             else if((chk = checkOrder(inPacket.getData()))!=0){
                 if(chk>0){
                     sendACK(sk3Port);
                 }
-                System.out.println("wrong order ACK");
+                //System.out.println("wrong order ACK");
             }   
             else{
                 //Advance ACK
@@ -59,7 +59,7 @@ public class Receiver {
                     ACK++;
                 }
                 sendACK(sk3Port);
-                System.out.println("Sending ACK "+ ACK);
+                //System.out.println("Sending ACK "+ ACK);
                 flag = processPacket(inPacket.getData(),inPacket.getLength()); //flag will be false for the last packet
             }
         }
@@ -93,7 +93,7 @@ public class Receiver {
             byte[] fileBytes = new byte[length-6];
             System.arraycopy(inBytes, 6, fileBytes, 0, length-6);
             String filename = new String(fileBytes);
-            System.out.println("new file: "+filename+ " "+fileBytes);
+            //System.out.println("new file: "+filename+ " "+fileBytes);
             initStream(filename);
         }
         else{
@@ -115,14 +115,14 @@ public class Receiver {
         ByteBuffer bb = ByteBuffer.wrap(inBytes);
         int check = bb.getInt();
         bb.clear();
-        System.out.println("CRC for "+length+" from server: "+check);
+        //System.out.println("CRC for "+length+" from server: "+check);
         crc.update(inBytes, 4, length-4);     
         int temp = (int)crc.getValue();
         return check == temp;
     }
     private int checkOrder(byte[] inBytes){
         byte seq = inBytes[4];
-        System.out.println("Receive sequence: "+seq);
+        //System.out.println("Receive sequence: "+seq);
         if(seq==(ACK+1)%128)
             return 0;
         else if(seq<(ACK+1)%128)

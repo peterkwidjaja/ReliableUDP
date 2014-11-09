@@ -43,7 +43,7 @@ public class Sender {
             this.dstPort = dstPort;
             fis = new FileInputStream(new File(inputPath));
             int packetNo = (int) Math.ceil(fis.available()/994.0);
-            System.out.println("to send "+packetNo);
+            //System.out.println("to send "+packetNo);
             packets = new DatagramPacket[packetNo+1]; //1 packet is dedicated to send filename
             prepare();
         }
@@ -108,7 +108,7 @@ public class Sender {
                             }
                             sk_out.send(packets[i]);
                             start = true;
-                            System.out.println("sending.." + i);
+                            //System.out.println("sending.." + i);
                         }
                     }
                     while(lastSent<ACK+10 && lastSent<packets.length-1){
@@ -119,7 +119,7 @@ public class Sender {
                         sk_out.send(packets[lastSent]);
                         if(lastSent == ACK+1)
                             start = true;
-                        System.out.println("sending.." + lastSent);
+                        //System.out.println("sending.." + lastSent);
                         if(lastSent==packets.length-1){ //Indicate that the last packet is already sent
                             lastACK = lastSeq;
                             lastPacket = true;
@@ -152,15 +152,15 @@ public class Sender {
                 while(flag){
                     if(lastSent!=ACK){
                         while(!start) {}
-                        System.out.println("Waiting for ACK..");
+                        //System.out.println("Waiting for ACK..");
                         sk_in.setSoTimeout(300);
                         try{
                             sk_in.receive(inPacket);
-                            System.out.println("ACK received!");
+                            //System.out.println("ACK received!");
                             processACK(inPacket.getData());          
                         }
                         catch(SocketTimeoutException e){
-                            System.out.println("Timeout");
+                            //System.out.println("Timeout");
                             packResend = ACK+1;
                             resend = true;
                             start = false;
@@ -182,7 +182,7 @@ public class Sender {
             crc.update(inBytes, 4, 1);
             if(check==(int)crc.getValue()){
                 byte ack = inBytes[4];
-                System.out.println("Receive ACK: "+ack);
+                //System.out.println("Receive ACK: "+ack);
                 
                 if(ack==ACK%128){
                     if(repAck==ack){    
@@ -214,10 +214,10 @@ public class Sender {
                 if(lastPacket && ACK==lastSent){
                     lastReceived = true;
                 }
-                System.out.println("Set ACK to: " + ACK);
+                //System.out.println("Set ACK to: " + ACK);
             }
             else{
-                System.out.println("ACK corrupted");
+                //System.out.println("ACK corrupted");
             }
         }
     }
