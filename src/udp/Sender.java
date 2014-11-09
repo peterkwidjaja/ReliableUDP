@@ -41,7 +41,7 @@ public class Sender {
             this.sk_out = sk_out;
             this.dstPort = dstPort;
             fis = new FileInputStream(new File(inputPath));
-            int packetNo = (int) Math.ceil(fis.available()/993.0);
+            int packetNo = (int) Math.ceil(fis.available()/994.0);
             System.out.println("to send "+packetNo);
             packets = new DatagramPacket[packetNo+1]; //1 packet is dedicated to send filename
             prepare();
@@ -53,7 +53,6 @@ public class Sender {
             
             //Prepare first packet which contains filename
             byte[] filename = outputFile.getBytes();
-            String newFile = new String(filename);
             byte[] outFilename = new byte[filename.length+headerSize];
             outFilename[5] = 1; //set FIRST
             outFilename[4] = 0; //set sequence to 0
@@ -143,7 +142,7 @@ public class Sender {
                 while(flag){
                     if(lastSent!=ACK){
                         System.out.println("Waiting for ACK..");
-                        sk_in.setSoTimeout(200);
+                        sk_in.setSoTimeout(100);
                         try{
                             sk_in.receive(inPacket);
                             System.out.println("ACK received!");
@@ -204,7 +203,7 @@ public class Sender {
     }
     public static void main(String[] args) throws SocketException, IOException{
         if(args.length!=4){
-            System.err.println("WRONG ARGUMENT!");
+            System.err.println("Argument: <sk1 port> <sk4 port> <input file> <filename at receiver>");
         }
         else{
             new Sender(Integer.parseInt(args[0]),Integer.parseInt(args[1]),args[2],args[3]);
