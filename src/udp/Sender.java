@@ -107,8 +107,9 @@ public class Sender {
                                 break;
                             }
                             sk_out.send(packets[i]);
+                            
+                            System.out.println("send repeat " + i);
                             start = true;
-                            //System.out.println("sending.." + i);
                         }
                     }
                     while(lastSent<ACK+10 && lastSent<packets.length-1){
@@ -119,7 +120,7 @@ public class Sender {
                         sk_out.send(packets[lastSent]);
                         if(lastSent == ACK+1)
                             start = true;
-                        //System.out.println("sending.." + lastSent);
+                        System.out.println("sending.." + lastSent+ " "+ACK);
                         if(lastSent==packets.length-1){ //Indicate that the last packet is already sent
                             lastACK = lastSeq;
                             lastPacket = true;
@@ -153,17 +154,17 @@ public class Sender {
                     if(lastSent!=ACK){
                         while(!start) {}
                         //System.out.println("Waiting for ACK..");
-                        sk_in.setSoTimeout(300);
+                        sk_in.setSoTimeout(200);
                         try{
                             sk_in.receive(inPacket);
                             //System.out.println("ACK received!");
                             processACK(inPacket.getData());          
                         }
                         catch(SocketTimeoutException e){
-                            //System.out.println("Timeout");
+                            System.out.println("Timeout");
                             packResend = ACK+1;
                             resend = true;
-                            start = false;
+                            //start = false;
                         }
                     }
                     if(lastReceived){   //last ACK received, close thread
@@ -182,7 +183,7 @@ public class Sender {
             crc.update(inBytes, 4, 1);
             if(check==(int)crc.getValue()){
                 byte ack = inBytes[4];
-                //System.out.println("Receive ACK: "+ack);
+                System.out.println("Receive ACK: "+ack);
                 
                 if(ack==ACK%128){
                     if(repAck==ack){    
@@ -199,7 +200,7 @@ public class Sender {
                         countLimit = 3;
                     }
                 }
-                
+                //Advance ACK only if the received ack is greater than current ACK
                 if((ACK%128)<ack && (lastSeq>=ack)){
                     ACK += ack-(ACK%128);
                 }
@@ -211,10 +212,11 @@ public class Sender {
                         ACK = lastSent - (lastSeq-ack);
                     }
                 }
+                //Detect last ACK
                 if(lastPacket && ACK==lastSent){
                     lastReceived = true;
                 }
-                //System.out.println("Set ACK to: " + ACK);
+                System.out.println("Set ACK to: " + ACK);
             }
             else{
                 //System.out.println("ACK corrupted");
