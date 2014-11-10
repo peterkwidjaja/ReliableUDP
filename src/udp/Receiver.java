@@ -38,19 +38,14 @@ public class Receiver {
         boolean flag = true;
         while(flag){
             sk2.receive(inPacket);
-            //System.out.println("Receive packet!");
             int chk;
             if(!checksum(inPacket.getData(),inPacket.getLength())){
-                //System.out.println("CRC error");
                 sendACK(sk3Port);
-                //System.out.println("Sending ACK "+ ACK);
             }
             else if((chk = checkOrder(inPacket.getData()))!=0){
                 if(chk>0){
                     sendACK(sk3Port);
-                    //System.out.println("Sending ACK "+ ACK);
                 }
-                //System.out.println("wrong order ACK");
             }   
             else{
                 //Advance ACK
@@ -61,14 +56,13 @@ public class Receiver {
                     ACK++;
                 }
                 sendACK(sk3Port);
-                //System.out.println("Sending ACK "+ ACK);
                 flag = processPacket(inPacket.getData(),inPacket.getLength()); //flag will be false for the last packet
             }
         }
         outFile.close();
         boolean end = true;
         while(end){
-            sk2.setSoTimeout(200);
+            sk2.setSoTimeout(300);
             try{
                 sk2.receive(inPacket);
                 sendACK(sk3Port);
@@ -95,7 +89,6 @@ public class Receiver {
             byte[] fileBytes = new byte[length-7];
             System.arraycopy(inBytes, 7, fileBytes, 0, length-7);
             String filename = new String(fileBytes);
-            //System.out.println("new file: "+filename+ " "+fileBytes);
             initStream(filename);
         }
         else{
@@ -117,7 +110,6 @@ public class Receiver {
         ByteBuffer bb = ByteBuffer.wrap(inBytes);
         int check = bb.getInt();
         bb.clear();
-        //System.out.println("CRC for "+length+" from server: "+check);
         crc.update(inBytes, 4, length-4);     
         int temp = (int)crc.getValue();
         return check == temp;
@@ -125,7 +117,6 @@ public class Receiver {
     private int checkOrder(byte[] inBytes){
         ByteBuffer bb = ByteBuffer.wrap(inBytes);
         short seq = bb.getShort(4);
-        //System.out.println("Receive sequence: "+seq);
         if(seq==(ACK+1)%32768)
             return 0;
         else if((ACK+1)%32768 > (ACK+10)%32768){
@@ -159,7 +150,6 @@ public class Receiver {
             out[i] = bb.get();
         }
         DatagramPacket outPacket = new DatagramPacket(out,out.length,outAdd,sk3port);
-        //System.out.println("ACK LENGTH: "+out.length);
         sk3.send(outPacket);
     }
     public static void main(String[] args) throws IOException{

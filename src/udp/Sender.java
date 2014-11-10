@@ -4,6 +4,7 @@
  * and open the template in the editor.
  */
 
+import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -36,14 +37,13 @@ public class Sender {
         private final int headerSize = 7; //define size of header in the packet
         private DatagramSocket sk_out;
         private int dstPort;
-        FileInputStream fis;
+        BufferedInputStream fis;
         DatagramPacket[] packets;
         public OutThread(DatagramSocket sk_out, int dstPort) throws FileNotFoundException, IOException{
             this.sk_out = sk_out;
             this.dstPort = dstPort;
-            fis = new FileInputStream(new File(inputPath));
+            fis = new BufferedInputStream(new FileInputStream(new File(inputPath)));
             int packetNo = (int) Math.ceil(fis.available()/993.0);
-            //System.out.println("to send "+packetNo);
             packets = new DatagramPacket[packetNo+1]; //1 packet is dedicated to send filename
             prepare();
         }
@@ -111,9 +111,7 @@ public class Sender {
                                 lastSent = ACK;
                                 break;
                             }
-                            sk_out.send(packets[i]);
-                            
-                            //System.out.println("send repeat " + i);
+                            sk_out.send(packets[i]);                           
                             start = true;
                         }
                     }
@@ -125,7 +123,6 @@ public class Sender {
                         sk_out.send(packets[lastSent]);
                         if(lastSent == ACK+1)
                             start = true;
-                        //System.out.println("sending.." + lastSent+ " "+ACK);
                         if(lastSent==packets.length-1){ //Indicate that the last packet is already sent
                             lastACK = lastSeq;
                             lastPacket = true;
@@ -157,19 +154,14 @@ public class Sender {
             try{
                 while(flag){
                     if(lastSent!=ACK){
-                        while(!start) {}
-                        //System.out.println("Waiting for ACK..");
-                        sk_in.setSoTimeout(300);
+                        sk_in.setSoTimeout(50); //Set timeout for ACK in ms
                         try{
                             sk_in.receive(inPacket);
-                            //System.out.println("ACK received!");
                             processACK(inPacket.getData());          
                         }
                         catch(SocketTimeoutException e){
-                            //System.out.println("Timeout");
                             packResend = ACK+1;
                             resend = true;
-                            //start = false;
                         }
                     }
                     if(lastReceived){   //last ACK received, close thread
@@ -183,13 +175,11 @@ public class Sender {
         }
         private void processACK(byte[] inBytes) throws SocketTimeoutException{
             ByteBuffer bb = ByteBuffer.wrap(inBytes);
-            //System.out.println("ACK size: "+bb.capacity());
             int check = bb.getInt();
             CRC32 crc = new CRC32();
             crc.update(inBytes, 4, 2);
             if(check==(int)crc.getValue()){
                 short ack = bb.getShort();
-                //System.out.println("Receive ACK: "+ack);
                 
                 if(ack==ACK%32768){
                     if(repAck==ack){    
@@ -222,10 +212,6 @@ public class Sender {
                 if(lastPacket && ACK==lastSent){
                     lastReceived = true;
                 }
-                //System.out.println("Set ACK to: " + ACK);
-            }
-            else{
-                //System.out.println("ACK corrupted");
             }
         }
     }
