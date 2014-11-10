@@ -33,7 +33,7 @@ public class Sender {
     int lastACK = -1;
     boolean start = true;
     class OutThread extends Thread{
-        private final int headerSize = 6; //define size of header in the packet
+        private final int headerSize = 7; //define size of header in the packet
         private DatagramSocket sk_out;
         private int dstPort;
         FileInputStream fis;
@@ -42,25 +42,26 @@ public class Sender {
             this.sk_out = sk_out;
             this.dstPort = dstPort;
             fis = new FileInputStream(new File(inputPath));
-            int packetNo = (int) Math.ceil(fis.available()/994.0);
+            int packetNo = (int) Math.ceil(fis.available()/993.0);
             //System.out.println("to send "+packetNo);
             packets = new DatagramPacket[packetNo+1]; //1 packet is dedicated to send filename
             prepare();
         }
         private void prepare() throws IOException{
-            byte[] fileBuff = new byte[994];     
+            byte[] fileBuff = new byte[993];     
             InetAddress dstAdd = InetAddress.getByName("127.0.0.1"); 
             
             //Prepare first packet which contains filename
             byte[] filename = outputFile.getBytes();
             byte[] outFilename = new byte[filename.length+headerSize];
-            outFilename[5] = 1; //set FIRST
-            outFilename[4] = 0; //set sequence to 0
-            System.arraycopy(filename, 0, outFilename, 6, filename.length);
+            outFilename[6] = 1; //set FIRST
+            outFilename[4] = outFilename[5] = 0; //set sequence to 0
+            System.arraycopy(filename, 0, outFilename, headerSize, filename.length);
             prepareCRC(outFilename, outFilename.length-4);
             packets[0] = new DatagramPacket(outFilename,outFilename.length,dstAdd,dstPort);
             
             //preparing each packet to be sent
+            ByteBuffer bb = ByteBuffer.allocate(2);
             for(int i=1; i<packets.length; i++){
                 byte[] outData;
                 byte EOF = 0;
@@ -72,12 +73,16 @@ public class Sender {
                 else{
                     outData = new byte[1000];
                 }
-                outData[5] = EOF;
+                outData[6] = EOF;
                 fis.read(fileBuff);
-                byte seq = (byte)(i%128); //convert sequence to byte, resetting when necessary
-                outData[4] = seq;
+                short seq = (short)(i%32768);
+                bb.putShort(seq);
+                bb.flip();
+                outData[4]=bb.get();
+                outData[5]=bb.get();
+                bb.clear();
                 System.arraycopy(fileBuff,0,outData,headerSize,fileBuff.length);
-                prepareCRC(outData, outData.length-4);   
+                prepareCRC(outData, outData.length-4);
                 packets[i] = new DatagramPacket(outData,outData.length,dstAdd,dstPort);
             }
             
@@ -108,7 +113,7 @@ public class Sender {
                             }
                             sk_out.send(packets[i]);
                             
-                            System.out.println("send repeat " + i);
+                            //System.out.println("send repeat " + i);
                             start = true;
                         }
                     }
@@ -116,11 +121,11 @@ public class Sender {
                         if(resend) break; //if something needs to be resent break, attend to the resend first!
                         
                         lastSent++;
-                        lastSeq = lastSent%128;
+                        lastSeq = lastSent%32768;
                         sk_out.send(packets[lastSent]);
                         if(lastSent == ACK+1)
                             start = true;
-                        System.out.println("sending.." + lastSent+ " "+ACK);
+                        //System.out.println("sending.." + lastSent+ " "+ACK);
                         if(lastSent==packets.length-1){ //Indicate that the last packet is already sent
                             lastACK = lastSeq;
                             lastPacket = true;
@@ -140,13 +145,13 @@ public class Sender {
     class InThread extends Thread{
         private DatagramSocket sk_in;
         private int countRep = 0;
-        private byte repAck = 0;
+        private short repAck = 0;
         private int countLimit = 3;
         public InThread(DatagramSocket sk4){
             this.sk_in = sk4;
         }
         public void run(){
-            byte[] inBytes = new byte[5];
+            byte[] inBytes = new byte[6];
             DatagramPacket inPacket = new DatagramPacket(inBytes,inBytes.length);
             boolean flag = true;
             try{
@@ -154,14 +159,14 @@ public class Sender {
                     if(lastSent!=ACK){
                         while(!start) {}
                         //System.out.println("Waiting for ACK..");
-                        sk_in.setSoTimeout(200);
+                        sk_in.setSoTimeout(300);
                         try{
                             sk_in.receive(inPacket);
                             //System.out.println("ACK received!");
                             processACK(inPacket.getData());          
                         }
                         catch(SocketTimeoutException e){
-                            System.out.println("Timeout");
+                            //System.out.println("Timeout");
                             packResend = ACK+1;
                             resend = true;
                             //start = false;
@@ -178,14 +183,15 @@ public class Sender {
         }
         private void processACK(byte[] inBytes) throws SocketTimeoutException{
             ByteBuffer bb = ByteBuffer.wrap(inBytes);
+            //System.out.println("ACK size: "+bb.capacity());
             int check = bb.getInt();
             CRC32 crc = new CRC32();
-            crc.update(inBytes, 4, 1);
+            crc.update(inBytes, 4, 2);
             if(check==(int)crc.getValue()){
-                byte ack = inBytes[4];
-                System.out.println("Receive ACK: "+ack);
+                short ack = bb.getShort();
+                //System.out.println("Receive ACK: "+ack);
                 
-                if(ack==ACK%128){
+                if(ack==ACK%32768){
                     if(repAck==ack){    
                         countRep++;
                         if(countRep==countLimit){
@@ -201,12 +207,12 @@ public class Sender {
                     }
                 }
                 //Advance ACK only if the received ack is greater than current ACK
-                if((ACK%128)<ack && (lastSeq>=ack)){
-                    ACK += ack-(ACK%128);
+                if((ACK%32768)<ack && (lastSeq>=ack)){
+                    ACK += ack-(ACK%32768);
                 }
-                else if((ACK%128)>lastSeq){
-                    if(ack>(ACK%128)){
-                        ACK += ack-(ACK%128);
+                else if((ACK%32768)>lastSeq){
+                    if(ack>(ACK%32768)){
+                        ACK += ack-(ACK%32768);
                     }
                     else if(ack<=lastSeq){
                         ACK = lastSent - (lastSeq-ack);
@@ -216,7 +222,7 @@ public class Sender {
                 if(lastPacket && ACK==lastSent){
                     lastReceived = true;
                 }
-                System.out.println("Set ACK to: " + ACK);
+                //System.out.println("Set ACK to: " + ACK);
             }
             else{
                 //System.out.println("ACK corrupted");

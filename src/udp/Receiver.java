@@ -26,7 +26,7 @@ public class Receiver {
     BufferedOutputStream outFile;
     DatagramSocket sk2, sk3;
     String path;
-    byte ACK = -1;
+    short ACK = -1;
     public Receiver(int sk2Port, int sk3Port, String path) throws IOException{
         //Initialize the two socket
         sk2 = new DatagramSocket(sk2Port);  //sk2 is to receive from UnreliNet
@@ -54,7 +54,7 @@ public class Receiver {
             }   
             else{
                 //Advance ACK
-                if(ACK==Byte.MAX_VALUE){
+                if(ACK==Short.MAX_VALUE){
                     ACK=0;
                 }
                 else{
@@ -89,18 +89,18 @@ public class Receiver {
     
     //return false if it is the last packet
     private boolean processPacket(byte[] inBytes, int length) throws IOException{
-        byte EOF = inBytes[5];
+        byte EOF = inBytes[6];
         boolean last = true;
         if(EOF==1){
-            byte[] fileBytes = new byte[length-6];
-            System.arraycopy(inBytes, 6, fileBytes, 0, length-6);
+            byte[] fileBytes = new byte[length-7];
+            System.arraycopy(inBytes, 7, fileBytes, 0, length-7);
             String filename = new String(fileBytes);
             //System.out.println("new file: "+filename+ " "+fileBytes);
             initStream(filename);
         }
         else{
             if(outFile!=null){
-                outFile.write(inBytes, 6, length-6);
+                outFile.write(inBytes, 7, length-7);
             }
             else{
                 System.err.println("filename has not been initialized");
@@ -123,18 +123,19 @@ public class Receiver {
         return check == temp;
     }
     private int checkOrder(byte[] inBytes){
-        byte seq = inBytes[4];
+        ByteBuffer bb = ByteBuffer.wrap(inBytes);
+        short seq = bb.getShort(4);
         //System.out.println("Receive sequence: "+seq);
-        if(seq==(ACK+1)%128)
+        if(seq==(ACK+1)%32768)
             return 0;
-        else if((ACK+1)%128 > (ACK+10)%128){
-            if(seq>(ACK+1) || seq<(ACK+10)%128){
+        else if((ACK+1)%32768 > (ACK+10)%32768){
+            if(seq>(ACK+1) || seq<(ACK+10)%32768){
                 return 1;
             }
             else
                 return -1;
         }
-        else if(seq>(ACK+1)%128 && seq<(ACK+10)%128){
+        else if(seq>(ACK+1)%32768 && seq<(ACK+10)%32768){
             return 1;
         }
         else
@@ -142,18 +143,23 @@ public class Receiver {
     }
     private void sendACK(int sk3port) throws UnknownHostException, IOException{
         CRC32 crc = new CRC32();
-        byte[] out = new byte[5];
+        byte[] out = new byte[6];
         InetAddress outAdd = InetAddress.getByName("127.0.0.1");
-        out[4] = ACK;
-        crc.update(out, 4, 1);
         ByteBuffer bb = ByteBuffer.allocate(4);
+        bb.putShort(ACK);
+        bb.flip();
+        out[4] = bb.get();
+        out[5] = bb.get();
+        crc.update(out, 4, 2);
         int check = (int)crc.getValue();
+        bb.clear();
         bb.putInt(check);
         bb.flip();
         for(int i=0; i<4; i++){
             out[i] = bb.get();
         }
         DatagramPacket outPacket = new DatagramPacket(out,out.length,outAdd,sk3port);
+        //System.out.println("ACK LENGTH: "+out.length);
         sk3.send(outPacket);
     }
     public static void main(String[] args) throws IOException{
